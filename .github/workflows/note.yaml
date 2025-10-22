@@ -65,12 +65,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Clean npm cache
-        run: npm cache clean --force
-      - name: Install Claude Code SDK
+      - name: Force fresh install of Claude Code SDK
         run: |
-          npm init -y
-          npm i @anthropic-ai/claude-code
+          rm -rf node_modules package-lock.json
+          npm install @anthropic-ai/claude-code@latest --force
+     
 
       - name: Research with Claude Code SDK
         run: |
