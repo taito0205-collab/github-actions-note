@@ -438,7 +438,7 @@ jobs:
           TAGS: ${{ steps.draft.outputs.TAGS }}
           STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
         run: |
-          # 本文は後続スクリプト内でMarkdownリンク→素URL化などの前処理を行う
+          
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
           import { marked } from 'marked';
@@ -616,7 +616,7 @@ jobs:
             await page.waitForSelector('textarea[placeholder*="タイトル"]');
             await page.fill('textarea[placeholder*="タイトル"]', TITLE);
 
-            # --- タイトル欄修正版（新UI対応）---
+           
             const titleSelectors = [
               "input[placeholder*=\\\"タイトル\\\"]",
               "textarea[placeholder*=\\\"タイトル\\\"]",
