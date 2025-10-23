@@ -65,7 +65,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-            - name: Research with Claude API (Direct)
+      - name: Research with Claude API (Direct)
         run: |
           cat > research.cjs <<'EOF'
           const fs = require('fs');
