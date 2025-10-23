@@ -616,23 +616,39 @@ jobs:
             await page.waitForSelector('textarea[placeholder*="タイトル"]');
             await page.fill('textarea[placeholder*="タイトル"]', TITLE);
 
-            const bodyBox = page.locator('div[contenteditable="true"][role="textbox"]').first();
-            await bodyBox.waitFor({ state: 'visible' });
-            const htmlAll = htmlFromMarkdown(preBody);
-            let pasted = false;
-            try {
-              const origin = new URL(START_URL).origin;
-              await context.grantPermissions(['clipboard-read','clipboard-write'], { origin });
-              await page.evaluate(async (html, plain) => {
-                const item = new ClipboardItem({
-                  'text/html': new Blob([html], { type: 'text/html' }),
-                  'text/plain': new Blob([plain], { type: 'text/plain' }),
-                });
-                await navigator.clipboard.write([item]);
-              }, htmlAll, preBody);
-              await bodyBox.click();
-              await page.keyboard.press('Control+V');
-              await page.waitForTimeout(200);
+           const titleSelectors = [
+  "input[placeholder*='タイトル']",
+  "textarea[placeholder*='タイトル']",
+  "div[contenteditable='true'][data-placeholder*='タイトル']"
+];
+let titleBox = null;
+for (const sel of titleSelectors) {
+  const loc = page.locator(sel);
+  if (await loc.count()) { titleBox = loc.first(); break; }
+}
+if (!titleBox) throw new Error('タイトル欄が見つかりません（UI変更の可能性）');
+await titleBox.click({ delay: 100 });
+await titleBox.fill(TITLE);
+await page.waitForTimeout(300);
+
+// --- 本文欄修正版（新UI対応）---
+const bodySelectors = [
+  "div[contenteditable='true'][role='textbox']",
+  "div[contenteditable='true'][data-testid='editor-body']",
+  "div[contenteditable='true']"
+];
+let bodyBox = null;
+for (const sel of bodySelectors) {
+  const loc = page.locator(sel);
+  if (await loc.count()) { bodyBox = loc.first(); break; }
+}
+if (!bodyBox) throw new Error('本文エディタが見つかりません（UI変更の可能性）');
+
+// --- 本文HTML挿入 ---
+const htmlAll = htmlFromMarkdown(preBody);
+await insertHTML(page, bodyBox, htmlAll);
+await page.waitForTimeout(500);
+
               pasted = true;
             } catch (e) {
               // クリップボード権限が無い場合のフォールバック
