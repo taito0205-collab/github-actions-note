@@ -492,12 +492,12 @@ jobs:
          const titleSelectors = [
           'h1[contenteditable="true"]',
           'h2[contenteditable="true"]',
-          'div[role="textbox"][data-placeholder*="タイトル"]',
-          'input[placeholder*="タイトル"]',
-          'textarea[placeholder*="タイトル"]',
-          'div[contenteditable="true"][data-placeholder*="タイトル"]',
-          'div[aria-label*="タイトル"]'
-          ];
+          'div[role="textbox"][data-placeholder*="記事タイトル"]',
+          'input[placeholder*="記事タイトル"]',
+          'textarea[placeholder*="記事タイトル"]',
+          'div[contenteditable="true"][data-placeholder*="記事タイトル"]',
+          'div[aria-label*="記事タイトル"]'
+         ];
 
             let titleBox = null;
             for (const sel of titleSelectors) {
