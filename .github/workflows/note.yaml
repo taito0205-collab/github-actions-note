@@ -484,73 +484,45 @@ jobs:
             const browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });
             const context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });
             const page = await context.newPage();
-            page.setDefaultTimeout(180000);
+            page.setDefaultTimeout(300000); // 最大5分待機
+            console.log('Navigating to:', START_URL);
 
             await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
+            console.log('Page loaded. Current URL:', page.url());
 
-            // --- noteエディタの描画完了を強化検知（iframe対応・最大90秒）---
-            await page.waitForFunction(() => {
-              const direct = document.querySelector('textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
-              if (direct) return true;
-              const iframe = document.querySelector('iframe');
-              if (!iframe) return false;
-              try {
-                const inner = iframe.contentDocument || iframe.contentWindow?.document;
-                return !!inner.querySelector('textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
-              } catch (e) {
-                return false;
-              }
-            }, { timeout: 90000 });
-
-            // --- タイトル欄修正版（iframe内も検出）---
-            const titleSelectors = [
-              'textarea[placeholder*="記事タイトル"]',
-              'input[placeholder*="記事タイトル"]',
-              'div[contenteditable="true"][data-placeholder*="記事タイトル"]'
-            ];
-
+            // --- iframe対応 + リトライ構造 ---
+            let frame = page.mainFrame();
             let titleBox = null;
 
-            // 最大60秒待機＋120回リトライ（0.5秒間隔）
-            for (let i = 0; i < 120; i++) {
-              for (const sel of titleSelectors) {
-                const loc = page.locator(sel);
+            for (let attempt = 1; attempt <= 10; attempt++) {
+              const frames = page.frames();
+              for (const f of frames) {
+                const loc = f.locator('textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
                 if (await loc.count()) {
                   titleBox = loc.first();
+                  frame = f;
+                  console.log(`タイトル欄検出 (iframe内, attempt ${attempt})`);
                   break;
                 }
               }
-
-              // iframe内も探索
-              if (!titleBox) {
-                const frames = page.frames();
-                for (const frame of frames) {
-                  for (const sel of titleSelectors) {
-                    const loc = frame.locator(sel);
-                    if (await loc.count()) {
-                      titleBox = loc.first();
-                      break;
-                    }
-                  }
-                  if (titleBox) break;
-                }
-              }
-
               if (titleBox) break;
-              await page.waitForTimeout(500);
+              console.log(`retry ${attempt}/10 - waiting for editor DOM...`);
+              await page.waitForTimeout(15000); // 15秒ごとにリトライ
             }
 
             if (!titleBox) {
               const htmlPath = path.join(process.cwd(), 'title_debug.html');
               const html = await page.content();
               fs.writeFileSync(htmlPath, html);
-              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更またはiframe内描画遅延の可能性があります。`);
+              console.error(`タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました（iframe対応版）`);
+              await browser.close();
               process.exit(1);
             }
 
             await titleBox.click({ delay: 100 });
             await titleBox.fill(TITLE);
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(500);
+            console.log('Title filled.');
 
             // --- 本文HTML挿入 ---
             const bodySelectors = [
@@ -559,26 +531,33 @@ jobs:
               'div[contenteditable="true"]'
             ];
             let bodyBox = null;
+
             for (const sel of bodySelectors) {
-              const loc = page.locator(sel);
+              const loc = frame.locator(sel);
               if (await loc.count()) {
                 bodyBox = loc.first();
                 break;
               }
             }
-            if (!bodyBox) throw new Error('本文エディタが見つかりません（UI変更の可能性）');
+
+            if (!bodyBox) {
+              const htmlPath = path.join(process.cwd(), 'body_debug.html');
+              fs.writeFileSync(htmlPath, await frame.content());
+              throw new Error(`本文エディタが見つかりません（UI変更の可能性）。DOMを ${htmlPath} に保存しました。`);
+            }
 
             const htmlAll = marked.parse(preBody, { gfm: true, breaks: false, mangle: false, headerIds: false });
             await bodyBox.click();
             await page.keyboard.insertText(htmlAll);
-            await page.waitForTimeout(800);
+            await page.waitForTimeout(1000);
+            console.log('Body inserted.');
 
             // --- 下書き保存 ---
-            const saveBtn = page.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
-            await saveBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+            const saveBtn = frame.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
+            await saveBtn.waitFor({ state: 'visible', timeout: 60000 }).catch(() => {});
             if (await saveBtn.isEnabled()) {
               await saveBtn.click();
-              await page.locator('text=保存しました').waitFor({ timeout: 4000 }).catch(() => {});
+              await frame.locator('text=保存しました').waitFor({ timeout: 5000 }).catch(() => {});
             }
 
             await page.screenshot({ path: SS_PATH, fullPage: true });
