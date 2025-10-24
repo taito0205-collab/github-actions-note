@@ -488,24 +488,39 @@ jobs:
 
           await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
 
-          // --- タイトル欄修正版（新UI対応）---
-          const titleSelectors = [
-            'input[placeholder*="タイトル"]',
-            'textarea[placeholder*="タイトル"]',
-            'div[contenteditable="true"][data-placeholder*="タイトル"]'
+         // --- タイトル欄修正版（note新UI対応2025年10月）---
+         const titleSelectors = [
+          'h1[contenteditable="true"]',
+          'h2[contenteditable="true"]',
+          'div[role="textbox"][data-placeholder*="タイトル"]',
+          'input[placeholder*="タイトル"]',
+          'textarea[placeholder*="タイトル"]',
+          'div[contenteditable="true"][data-placeholder*="タイトル"]',
+          'div[aria-label*="タイトル"]'
           ];
-          let titleBox = null;
-          for (const sel of titleSelectors) {
-            const loc = page.locator(sel);
-            if (await loc.count()) {
-              titleBox = loc.first();
-              break;
+
+            let titleBox = null;
+            for (const sel of titleSelectors) {
+              const loc = page.locator(sel);
+              if (await loc.count()) {
+                titleBox = loc.first();
+                break;
+              }
             }
-          }
-          if (!titleBox) throw new Error('タイトル欄が見つかりません（UI変更の可能性）');
-          await titleBox.click({ delay: 100 });
-          await titleBox.fill(TITLE);
-          await page.waitForTimeout(300);
+            
+            if (!titleBox) {
+              // デバッグ用：HTMLスナップショットを保存
+              const htmlPath = path.join(process.cwd(), 'title_debug.html');
+              const html = await page.content();
+              fs.writeFileSync(htmlPath, html);
+              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更の可能性があります。`);
+              process.exit(1);
+            }
+            
+            await titleBox.click({ delay: 100 });
+            await titleBox.fill(TITLE);
+            await page.waitForTimeout(500);
+
 
           // --- 本文HTML挿入 ---
           const bodySelectors = [
