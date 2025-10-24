@@ -488,7 +488,21 @@ jobs:
 
             await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
 
-            // --- タイトル欄修正版（note新UI対応2025年10月・超安定構成）---
+            // --- noteエディタの描画完了を強化検知（iframe対応・最大90秒）---
+            await page.waitForFunction(() => {
+              const direct = document.querySelector('textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
+              if (direct) return true;
+              const iframe = document.querySelector('iframe');
+              if (!iframe) return false;
+              try {
+                const inner = iframe.contentDocument || iframe.contentWindow?.document;
+                return !!inner.querySelector('textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
+              } catch (e) {
+                return false;
+              }
+            }, { timeout: 90000 });
+
+            // --- タイトル欄修正版（iframe内も検出）---
             const titleSelectors = [
               'textarea[placeholder*="記事タイトル"]',
               'input[placeholder*="記事タイトル"]',
@@ -506,16 +520,31 @@ jobs:
                   break;
                 }
               }
+
+              // iframe内も探索
+              if (!titleBox) {
+                const frames = page.frames();
+                for (const frame of frames) {
+                  for (const sel of titleSelectors) {
+                    const loc = frame.locator(sel);
+                    if (await loc.count()) {
+                      titleBox = loc.first();
+                      break;
+                    }
+                  }
+                  if (titleBox) break;
+                }
+              }
+
               if (titleBox) break;
               await page.waitForTimeout(500);
             }
 
             if (!titleBox) {
-              // デバッグ用：HTMLスナップショットを保存
               const htmlPath = path.join(process.cwd(), 'title_debug.html');
               const html = await page.content();
               fs.writeFileSync(htmlPath, html);
-              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更または描画遅延の可能性があります。`);
+              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更またはiframe内描画遅延の可能性があります。`);
               process.exit(1);
             }
 
@@ -567,6 +596,7 @@ jobs:
           if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
           if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
           if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+
 
 
       - name: Upload screenshot (if any)
