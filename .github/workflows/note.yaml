@@ -566,5 +566,13 @@ jobs:
         if: ${{ steps.publish.outputs.screenshot != '' }}
         uses: actions/upload-artifact@v4
         with:
-         name: note-screenshot
-         path: ${{ steps.publish.outputs.screenshot }}
+          name: note-screenshot
+          path: ${{ steps.publish.outputs.screenshot }}
+
+      - name: Upload title_debug.html (if exists)
+        if: ${{ always() && hashFiles('title_debug.html') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: note-debug-html
+          path: title_debug.html
+
