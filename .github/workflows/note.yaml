@@ -488,11 +488,11 @@ jobs:
 
           await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
 
-         // --- タイトル欄修正版（note新UI対応2025年10月）---
+          // --- タイトル欄修正版（note新UI対応2025年10月最終安定版）---
           const titleSelectors = [
-            'textarea[placeholder="記事タイトル"]',
-            'input[placeholder="記事タイトル"]',
-            'div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+            'textarea[placeholder="記事タイトル"]',  //  現行note UIのメイン
+            'textarea.sc-80832eb4-0.heevId',           //  実際のclass指定フォールバック
+            'div[contenteditable="true"][data-placeholder*="記事タイトル"]' //  旧UIフォールバック
           ];
 
             let titleBox = null;
