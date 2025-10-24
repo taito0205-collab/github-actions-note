@@ -437,9 +437,9 @@ jobs:
           TITLE: ${{ steps.draft.outputs.TITLE }}
           TAGS: ${{ steps.draft.outputs.TAGS }}
           STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
-        run: |
-          
-          cat > post.mjs <<'EOF'
+
+　      run: |
+        cat > post.mjs <<'EOF'
         import { chromium } from 'playwright';
         import { marked } from 'marked';
         import fs from 'fs';
@@ -542,16 +542,17 @@ jobs:
 
           await browser.close();
         })();
-          EOF
-          node post.mjs | tee post.log
-          url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-          draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-          shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
-          if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
-          if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
-          if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+        EOF
 
-      - name: Upload screenshot (if any)
+        node post.mjs | tee post.log
+        url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+        draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+        shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
+        if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
+        if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
+        if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+        
+        - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
         uses: actions/upload-artifact@v4
         with:
