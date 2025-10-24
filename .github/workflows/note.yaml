@@ -489,15 +489,11 @@ jobs:
           await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
 
          // --- タイトル欄修正版（note新UI対応2025年10月）---
-         const titleSelectors = [
-          'h1[contenteditable="true"]',
-          'h2[contenteditable="true"]',
-          'div[role="textbox"][data-placeholder*="記事タイトル"]',
-          'input[placeholder*="記事タイトル"]',
-          'textarea[placeholder*="記事タイトル"]',
-          'div[contenteditable="true"][data-placeholder*="記事タイトル"]',
-          'div[aria-label*="記事タイトル"]'
-         ];
+          const titleSelectors = [
+            'textarea[placeholder="記事タイトル"]',
+            'input[placeholder="記事タイトル"]',
+            'div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+          ];
 
             let titleBox = null;
             for (const sel of titleSelectors) {
