@@ -434,133 +434,140 @@ jobs:
       - name: Publish via Playwright (draft or public)
         id: publish
         env:
-         TITLE: ${{ steps.draft.outputs.TITLE }}
-         TAGS: ${{ steps.draft.outputs.TAGS }}
-         STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
+          TITLE: ${{ steps.draft.outputs.TITLE }}
+          TAGS: ${{ steps.draft.outputs.TAGS }}
+          STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
         run: |
-         cat > post.mjs <<'EOF'
-         import { chromium } from 'playwright';
-         import { marked } from 'marked';
-         import fs from 'fs';
-         import os from 'os';
-         import path from 'path';
+          cat > post.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import { marked } from 'marked';
+          import fs from 'fs';
+          import os from 'os';
+          import path from 'path';
 
-         function nowStr() {
-          const d = new Date();
-          const z = n => String(n).padStart(2, '0');
-          return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`;
-         }
+          function nowStr() {
+            const d = new Date();
+            const z = n => String(n).padStart(2, '0');
+            return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`;
+          }
 
-         const STATE_PATH = process.env.STATE_PATH;
-         const START_URL = process.env.START_URL || 'https://editor.note.com/new';
-         const rawTitle = process.env.TITLE || '';
-         const rawFinal = JSON.parse(fs.readFileSync('final.json', 'utf8'));
-         const rawBody = String(rawFinal.body || '');
-         const TAGS = process.env.TAGS || '';
-         const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
+          const STATE_PATH = process.env.STATE_PATH;
+          const START_URL = process.env.START_URL || 'https://editor.note.com/new';
+          const rawTitle = process.env.TITLE || '';
+          const rawFinal = JSON.parse(fs.readFileSync('final.json', 'utf8'));
+          const rawBody = String(rawFinal.body || '');
+          const TAGS = process.env.TAGS || '';
+          const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
 
-         if (!fs.existsSync(STATE_PATH)) {
-          console.error('storageState not found:', STATE_PATH);
-          process.exit(1);
-         }
+          if (!fs.existsSync(STATE_PATH)) {
+            console.error('storageState not found:', STATE_PATH);
+            process.exit(1);
+          }
 
-         const ssDir = path.join(os.tmpdir(), 'note-screenshots');
-         fs.mkdirSync(ssDir, { recursive: true });
-         const SS_PATH = path.join(ssDir, `note-post-${nowStr()}.png`);
+          const ssDir = path.join(os.tmpdir(), 'note-screenshots');
+          fs.mkdirSync(ssDir, { recursive: true });
+          const SS_PATH = path.join(ssDir, `note-post-${nowStr()}.png`);
 
-         function sanitizeTitle(t) {
-          let s = String(t || '').trim();
-          s = s.replace(/^#+\s*/, '');
-          s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '');
-          s = s.replace(/^`+|`+$/g, '').trim();
-          if (!s) s = 'タイトル（自動生成）';
-          return s;
-         }
+          function sanitizeTitle(t) {
+            let s = String(t || '').trim();
+            s = s.replace(/^#+\s*/, '');
+            s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '');
+            s = s.replace(/^`+|`+$/g, '').trim();
+            if (!s) s = 'タイトル（自動生成）';
+            return s;
+          }
 
-         let TITLE = sanitizeTitle(rawTitle);
-         const preBody = String(rawBody);
+          let TITLE = sanitizeTitle(rawTitle);
+          const preBody = String(rawBody);
 
-         (async () => {
-          const browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });
-          const context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });
-          const page = await context.newPage();
-          page.setDefaultTimeout(180000);
+          (async () => {
+            const browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });
+            const context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });
+            const page = await context.newPage();
+            page.setDefaultTimeout(180000);
 
-          await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
+            await page.goto(START_URL, { waitUntil: 'domcontentloaded' });
 
-          // --- タイトル欄修正版（note新UI対応2025年10月最終安定版）---
-          const titleSelectors = [
-            'textarea[placeholder="記事タイトル"]',  //  現行note UIのメイン
-            'textarea.sc-80832eb4-0.heevId',           //  実際のclass指定フォールバック
-            'div[contenteditable="true"][data-placeholder*="記事タイトル"]' //  旧UIフォールバック
-          ];
+            // --- タイトル欄修正版（note新UI対応2025年10月・超安定構成）---
+            const titleSelectors = [
+              'textarea[placeholder*="記事タイトル"]',
+              'input[placeholder*="記事タイトル"]',
+              'div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+            ];
 
             let titleBox = null;
-            for (const sel of titleSelectors) {
-              const loc = page.locator(sel);
-              if (await loc.count()) {
-                titleBox = loc.first();
-                break;
+
+            // 最大60秒待機＋120回リトライ（0.5秒間隔）
+            for (let i = 0; i < 120; i++) {
+              for (const sel of titleSelectors) {
+                const loc = page.locator(sel);
+                if (await loc.count()) {
+                  titleBox = loc.first();
+                  break;
+                }
               }
+              if (titleBox) break;
+              await page.waitForTimeout(500);
             }
-            
+
             if (!titleBox) {
               // デバッグ用：HTMLスナップショットを保存
               const htmlPath = path.join(process.cwd(), 'title_debug.html');
               const html = await page.content();
               fs.writeFileSync(htmlPath, html);
-              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更の可能性があります。`);
+              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました。UI変更または描画遅延の可能性があります。`);
               process.exit(1);
             }
-            
+
             await titleBox.click({ delay: 100 });
             await titleBox.fill(TITLE);
-            await page.waitForTimeout(500);
+            await page.waitForTimeout(800);
 
-
-          // --- 本文HTML挿入 ---
-          const bodySelectors = [
-            'div[contenteditable="true"][role="textbox"]',
-            'div[contenteditable="true"][data-testid="editor-body"]',
-            'div[contenteditable="true"]'
-          ];
-          let bodyBox = null;
-          for (const sel of bodySelectors) {
-            const loc = page.locator(sel);
-            if (await loc.count()) {
-              bodyBox = loc.first();
-              break;
+            // --- 本文HTML挿入 ---
+            const bodySelectors = [
+              'div[contenteditable="true"][role="textbox"]',
+              'div[contenteditable="true"][data-testid="editor-body"]',
+              'div[contenteditable="true"]'
+            ];
+            let bodyBox = null;
+            for (const sel of bodySelectors) {
+              const loc = page.locator(sel);
+              if (await loc.count()) {
+                bodyBox = loc.first();
+                break;
+              }
             }
-          }
-          if (!bodyBox) throw new Error('本文エディタが見つかりません（UI変更の可能性）');
+            if (!bodyBox) throw new Error('本文エディタが見つかりません（UI変更の可能性）');
 
-          const htmlAll = marked.parse(preBody, { gfm: true, breaks: false, mangle: false, headerIds: false });
-          await bodyBox.click();
-          await page.keyboard.insertText(htmlAll);
-          await page.waitForTimeout(500);
+            const htmlAll = marked.parse(preBody, { gfm: true, breaks: false, mangle: false, headerIds: false });
+            await bodyBox.click();
+            await page.keyboard.insertText(htmlAll);
+            await page.waitForTimeout(800);
 
-          // --- 下書き保存 ---
-          const saveBtn = page.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
-          await saveBtn.waitFor({ state: 'visible' });
-          if (await saveBtn.isEnabled()) {
-            await saveBtn.click();
-            await page.locator('text=保存しました').waitFor({ timeout: 4000 }).catch(() => {});
-          }
-          await page.screenshot({ path: SS_PATH, fullPage: true });
-          console.log('DRAFT_URL=' + page.url());
-          console.log('SCREENSHOT=' + SS_PATH);
+            // --- 下書き保存 ---
+            const saveBtn = page.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
+            await saveBtn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+            if (await saveBtn.isEnabled()) {
+              await saveBtn.click();
+              await page.locator('text=保存しました').waitFor({ timeout: 4000 }).catch(() => {});
+            }
 
-          await browser.close();
-         })();
-         EOF
+            await page.screenshot({ path: SS_PATH, fullPage: true });
+            console.log('DRAFT_URL=' + page.url());
+            console.log('SCREENSHOT=' + SS_PATH);
 
-         node post.mjs | tee post.log
-         url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-         draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-         shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
-         if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
-         if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
-         if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+            await browser.close();
+          })();
+          EOF
+
+          node post.mjs | tee post.log
+          url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+          draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+          shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
+          if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
+          if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
+          if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+
 
       - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
