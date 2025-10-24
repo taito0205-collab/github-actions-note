@@ -29,7 +29,7 @@ import { marked } from 'marked';
       'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
     );
     return iframes.length > 0 || titleCandidates.length > 0;
-  }, { timeout: 300000 }); // 5分待機
+  }, { timeout: 600000 }); // 10分待機
 
   // --- Retry loop (iframe対応) ---
   let frame = page.mainFrame();
