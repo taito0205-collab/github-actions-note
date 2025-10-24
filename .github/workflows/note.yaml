@@ -434,54 +434,53 @@ jobs:
       - name: Publish via Playwright (draft or public)
         id: publish
         env:
-          TITLE: ${{ steps.draft.outputs.TITLE }}
-          TAGS: ${{ steps.draft.outputs.TAGS }}
-          STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
+         TITLE: ${{ steps.draft.outputs.TITLE }}
+         TAGS: ${{ steps.draft.outputs.TAGS }}
+         STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
+        run: |
+         cat > post.mjs <<'EOF'
+         import { chromium } from 'playwright';
+         import { marked } from 'marked';
+         import fs from 'fs';
+         import os from 'os';
+         import path from 'path';
 
-　      run: |
-        cat > post.mjs <<'EOF'
-        import { chromium } from 'playwright';
-        import { marked } from 'marked';
-        import fs from 'fs';
-        import os from 'os';
-        import path from 'path';
-
-        function nowStr() {
+         function nowStr() {
           const d = new Date();
           const z = n => String(n).padStart(2, '0');
           return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}_${z(d.getHours())}-${z(d.getMinutes())}-${z(d.getSeconds())}`;
-        }
+         }
 
-        const STATE_PATH = process.env.STATE_PATH;
-        const START_URL = process.env.START_URL || 'https://editor.note.com/new';
-        const rawTitle = process.env.TITLE || '';
-        const rawFinal = JSON.parse(fs.readFileSync('final.json', 'utf8'));
-        const rawBody = String(rawFinal.body || '');
-        const TAGS = process.env.TAGS || '';
-        const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
+         const STATE_PATH = process.env.STATE_PATH;
+         const START_URL = process.env.START_URL || 'https://editor.note.com/new';
+         const rawTitle = process.env.TITLE || '';
+         const rawFinal = JSON.parse(fs.readFileSync('final.json', 'utf8'));
+         const rawBody = String(rawFinal.body || '');
+         const TAGS = process.env.TAGS || '';
+         const IS_PUBLIC = String(process.env.IS_PUBLIC || 'false') === 'true';
 
-        if (!fs.existsSync(STATE_PATH)) {
+         if (!fs.existsSync(STATE_PATH)) {
           console.error('storageState not found:', STATE_PATH);
           process.exit(1);
-        }
+         }
 
-        const ssDir = path.join(os.tmpdir(), 'note-screenshots');
-        fs.mkdirSync(ssDir, { recursive: true });
-        const SS_PATH = path.join(ssDir, `note-post-${nowStr()}.png`);
+         const ssDir = path.join(os.tmpdir(), 'note-screenshots');
+         fs.mkdirSync(ssDir, { recursive: true });
+         const SS_PATH = path.join(ssDir, `note-post-${nowStr()}.png`);
 
-        function sanitizeTitle(t) {
+         function sanitizeTitle(t) {
           let s = String(t || '').trim();
           s = s.replace(/^#+\s*/, '');
           s = s.replace(/^"+|"+$/g, '').replace(/^'+|'+$/g, '');
           s = s.replace(/^`+|`+$/g, '').trim();
           if (!s) s = 'タイトル（自動生成）';
           return s;
-        }
+         }
 
-        let TITLE = sanitizeTitle(rawTitle);
-        const preBody = String(rawBody);
+         let TITLE = sanitizeTitle(rawTitle);
+         const preBody = String(rawBody);
 
-        (async () => {
+         (async () => {
           const browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });
           const context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });
           const page = await context.newPage();
@@ -541,21 +540,20 @@ jobs:
           console.log('SCREENSHOT=' + SS_PATH);
 
           await browser.close();
-        })();
-        EOF
+         })();
+         EOF
 
-        node post.mjs | tee post.log
-        url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-        draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
-        shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
-        if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
-        if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
-        if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
-        
-        - name: Upload screenshot (if any)
+         node post.mjs | tee post.log
+         url=$(grep '^PUBLISHED_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+         draft=$(grep '^DRAFT_URL=' post.log | tail -n1 | cut -d'=' -f2-)
+         shot=$(grep '^SCREENSHOT=' post.log | tail -n1 | cut -d'=' -f2-)
+         if [ -n "$url" ]; then echo "published_url=$url" >> $GITHUB_OUTPUT; fi
+         if [ -n "$draft" ]; then echo "draft_url=$draft" >> $GITHUB_OUTPUT; fi
+         if [ -n "$shot" ]; then echo "screenshot=$shot" >> $GITHUB_OUTPUT; fi
+
+      - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
         uses: actions/upload-artifact@v4
         with:
-          name: note-screenshot
-          path: ${{ steps.publish.outputs.screenshot }}
-
+         name: note-screenshot
+         path: ${{ steps.publish.outputs.screenshot }}
