@@ -471,6 +471,12 @@ jobs:
             await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
             console.log('Page loaded. Current URL:', page.url());
 
+            const htmlDump = await page.content();
+            const dumpPath = path.join(process.cwd(), 'debug_editor_dump.html');
+            fs.writeFileSync(dumpPath, htmlDump);
+            console.log('🧩 Editor HTML dump saved:', dumpPath);
+
+
             // --- iframeまたはタイトル欄が出現するまで待機（10分）---
             await page.waitForFunction(() => {
               const iframes = document.querySelectorAll('iframe');
