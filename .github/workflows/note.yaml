@@ -440,74 +440,123 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          printf '%s\n' "import { chromium } from 'playwright';" > post.mjs
-          printf '%s\n' "import fs from 'fs';" >> post.mjs
-          printf '%s\n' "import path from 'path';" >> post.mjs
-          printf '%s\n' "import { marked } from 'marked';" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "(async () => {" >> post.mjs
-          printf '%s\n' "  const { STATE_PATH, TITLE, START_URL, IS_PUBLIC, TAGS } = process.env;" >> post.mjs
-          printf '%s\n' "  console.log('Navigating to:', START_URL);" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  const browser = await chromium.launch({ headless: true, args: ['--lang=ja-JP'] });" >> post.mjs
-          printf '%s\n' "  const context = await browser.newContext({ storageState: STATE_PATH, locale: 'ja-JP' });" >> post.mjs
-          printf '%s\n' "  const page = await context.newPage();" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  await page.goto(START_URL, { waitUntil: 'networkidle' });" >> post.mjs
-          printf '%s\n' "  console.log('Page loaded. Current URL:', page.url());" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  await page.waitForFunction(() => {" >> post.mjs
-          printf '%s\n' "    const iframes = document.querySelectorAll('iframe');" >> post.mjs
-          printf '%s\n' "    const titleCandidates = document.querySelectorAll('textarea[placeholder*=\"記事タイトル\"], input[placeholder*=\"記事タイトル\"], div[contenteditable=\"true\"][data-placeholder*=\"記事タイトル\"]');" >> post.mjs
-          printf '%s\n' "    return iframes.length > 0 || titleCandidates.length > 0;" >> post.mjs
-          printf '%s\n' "  }, { timeout: 600000 });" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  let frame = page.mainFrame();" >> post.mjs
-          printf '%s\n' "  for (let i = 0; i < 10; i++) {" >> post.mjs
-          printf '%s\n' "    console.log(\`retry \${i + 1}/10 - waiting for editor DOM...\`);" >> post.mjs
-          printf '%s\n' "    for (const f of page.frames()) {" >> post.mjs
-          printf '%s\n' "      const count = await f.locator('textarea[placeholder*=\"記事タイトル\"]').count();" >> post.mjs
-          printf '%s\n' "      if (count > 0) { frame = f; break; }" >> post.mjs
-          printf '%s\n' "    }" >> post.mjs
-          printf '%s\n' "    if (await frame.locator('textarea[placeholder*=\"記事タイトル\"]').count()) break;" >> post.mjs
-          printf '%s\n' "    await page.waitForTimeout(10000);" >> post.mjs
-          printf '%s\n' "  }" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  const titleBox = frame.locator('textarea[placeholder*=\"記事タイトル\"], input[placeholder*=\"記事タイトル\"], div[contenteditable=\"true\"][data-placeholder*=\"記事タイトル\"]').first();" >> post.mjs
-          printf '%s\n' "  try {" >> post.mjs
-          printf '%s\n' "    await titleBox.waitFor({ state: 'visible', timeout: 120000 });" >> post.mjs
-          printf '%s\n' "    await titleBox.click({ delay: 100 });" >> post.mjs
-          printf '%s\n' "    await titleBox.fill(TITLE);" >> post.mjs
-          printf '%s\n' "    console.log('✅ Title filled successfully');" >> post.mjs
-          printf '%s\n' "  } catch (e) {" >> post.mjs
-          printf '%s\n' "    const htmlPath = path.join(process.cwd(), 'title_debug.html');" >> post.mjs
-          printf '%s\n' "    fs.writeFileSync(htmlPath, await page.content());" >> post.mjs
-          printf '%s\n' "    console.error(\`❌ タイトル欄が見つかりません。DOMを \${htmlPath} に保存しました（iframe対応版）\`);" >> post.mjs
-          printf '%s\n' "    throw e;" >> post.mjs
-          printf '%s\n' "  }" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  const preBody = fs.existsSync('final.json') ? JSON.parse(fs.readFileSync('final.json', 'utf8')).body || '' : '（本文データが存在しません）';" >> post.mjs
-          printf '%s\n' "  const htmlAll = marked.parse(preBody, { gfm: true, breaks: false });" >> post.mjs
-          printf '%s\n' "  const bodyBox = frame.locator('div[contenteditable=\"true\"][role=\"textbox\"]').first();" >> post.mjs
-          printf '%s\n' "  await bodyBox.click();" >> post.mjs
-          printf '%s\n' "  await page.keyboard.insertText(htmlAll);" >> post.mjs
-          printf '%s\n' "  await page.waitForTimeout(500);" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  const saveBtn = frame.locator('button:has-text(\"下書き保存\"), [aria-label*=\"下書き保存\"]').first();" >> post.mjs
-          printf '%s\n' "  await saveBtn.waitFor({ state: 'visible', timeout: 60000 });" >> post.mjs
-          printf '%s\n' "  if (await saveBtn.isEnabled()) {" >> post.mjs
-          printf '%s\n' "    await saveBtn.click();" >> post.mjs
-          printf '%s\n' "    console.log('💾 下書きを保存しました');" >> post.mjs
-          printf '%s\n' "  }" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "  await page.screenshot({ path: 'final_screenshot.png', fullPage: true });" >> post.mjs
-          printf '%s\n' "  console.log('✅ 完了: draft saved');" >> post.mjs
-          printf '%s\n' "  console.log('URL:', page.url());" >> post.mjs
-          printf '%s\n' "  await browser.close();" >> post.mjs
-          printf '%s\n' "})();" >> post.mjs
-          printf '%s\n' "" >> post.mjs
-          printf '%s\n' "console.log('✅ post.mjs written and executed');" >> post.mjs
+          echo "✅ post.mjs writing (safe EOF version)..."
+
+          cat > post.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          import fs from 'fs';
+          import path from 'path';
+          import { marked } from 'marked';
+
+          (async () => {
+            const { STATE_PATH, TITLE, START_URL, IS_PUBLIC, TAGS } = process.env;
+            console.log('Navigating to:', START_URL);
+
+            // --- Playwright Launch ---
+            const browser = await chromium.launch({
+              headless: true,
+              args: ['--lang=ja-JP']
+            });
+            const context = await browser.newContext({
+              storageState: STATE_PATH,
+              locale: 'ja-JP'
+            });
+            const page = await context.newPage();
+
+            // --- ページ読み込み ---
+            await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
+            console.log('Page loaded. Current URL:', page.url());
+
+            // --- iframeまたはタイトル欄が出現するまで待機（10分）---
+            await page.waitForFunction(() => {
+              const iframes = document.querySelectorAll('iframe');
+              const titleCandidates = document.querySelectorAll(
+                'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+              );
+              return iframes.length > 0 || titleCandidates.length > 0;
+            }, { timeout: 600000 });
+
+            // --- iframe対応：タイトル入力リトライループ（最大10回）---
+            let frame = page.mainFrame();
+            for (let i = 0; i < 10; i++) {
+              console.log(`retry ${i + 1}/10 - waiting for editor DOM...`);
+              for (const f of page.frames()) {
+                const count = await f.locator('textarea[placeholder*="記事タイトル"]').count();
+                if (count > 0) { frame = f; break; }
+              }
+              if (await frame.locator('textarea[placeholder*="記事タイトル"]').count()) break;
+              await page.waitForTimeout(10000);
+            }
+
+            // --- タイトル欄検出 ---
+            const titleBox = frame.locator(
+              'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+            ).first();
+
+            try {
+              await titleBox.waitFor({ state: 'visible', timeout: 120000 });
+              await titleBox.click({ delay: 200 });
+              await titleBox.fill(TITLE);
+              console.log('✅ Title filled successfully');
+            } catch (e) {
+              const htmlPath = path.join(process.cwd(), 'title_debug.html');
+              fs.writeFileSync(htmlPath, await page.content());
+              console.error(`❌ タイトル欄が見つかりません。DOMを ${htmlPath} に保存しました（iframe対応・強化版）`);
+              await browser.close();
+              process.exit(1);
+            }
+
+            // --- 本文データの読込と整形 ---
+            let preBody = '（本文データが存在しません）';
+            try {
+              if (fs.existsSync('final.json')) {
+                const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
+                preBody = parsed.body || parsed.content || parsed.text || preBody;
+              }
+            } catch (err) {
+              console.error('⚠️ final.json の読み込みに失敗:', err);
+            }
+
+            const htmlAll = marked.parse(preBody, { gfm: true, breaks: false, headerIds: false });
+            const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
+
+            try {
+              await bodyBox.waitFor({ state: 'visible', timeout: 60000 });
+              await bodyBox.click();
+              await page.keyboard.insertText(htmlAll);
+              await page.waitForTimeout(500);
+              console.log('✅ Body inserted successfully');
+            } catch (err) {
+              console.error('❌ 本文挿入に失敗しました:', err);
+            }
+
+            // --- 下書き保存ボタン押下 ---
+            const saveBtn = frame.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
+            try {
+              await saveBtn.waitFor({ state: 'visible', timeout: 60000 });
+              if (await saveBtn.isEnabled()) {
+                await saveBtn.click();
+                console.log('💾 下書きを保存しました');
+              } else {
+                console.error('⚠️ 下書き保存ボタンが無効状態でした');
+              }
+            } catch (err) {
+              console.error('❌ 下書き保存処理に失敗しました:', err);
+            }
+
+            // --- スクリーンショット出力 ---
+            const screenshotPath = path.join(process.cwd(), 'final_screenshot.png');
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            console.log('🖼 Screenshot saved:', screenshotPath);
+
+            console.log('✅ 完了: 下書き投稿完了');
+            console.log('📄 現在のURL:', page.url());
+            await browser.close();
+          })();
+          EOF
+
           node post.mjs
+
 
       - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
