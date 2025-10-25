@@ -438,15 +438,10 @@ jobs:
           TAGS: ${{ steps.draft.outputs.TAGS }}
           STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
         run: |
-          cat > post.mjs <<EOF
-          import { chromium } from 'playwright';
-          console.log("✅ post.mjs running");
-          EOF
+          printf '%s\n' "import { chromium } from 'playwright';" > post.mjs
+          printf '%s\n' "console.log('✅ post.mjs running');" >> post.mjs
 
           node post.mjs
-
-
-
 
       - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
