@@ -431,20 +431,20 @@ jobs:
           echo "TITLE=$(jq -r .title final.json)" >> $GITHUB_OUTPUT
           echo "TAGS=$(jq -r '.tags | join(", ")' final.json)" >> $GITHUB_OUTPUT
 
-          - name: Publish via Playwright (draft or public)
-            id: publish
-            env:
-              TZ: Asia/Tokyo
-              IS_PUBLIC: false
-              STATE_JSON: ${{ secrets.NOTE_STORAGE_STATE_JSON }}
-              START_URL: https://editor.note.com/new
-              TITLE: ${{ steps.draft.outputs.TITLE }}
-              TAGS: ${{ steps.draft.outputs.TAGS }}
-              STATE_PATH: /home/runner/work/_temp/note-state.json
-            run: |
-              echo "$STATE_JSON" > $STATE_PATH
-              ls -l post.mjs
-              node post.mjs
+      - name: Publish via Playwright (draft or public)
+        id: publish
+        env:
+          TITLE: ${{ steps.draft.outputs.TITLE }}
+          TAGS: ${{ steps.draft.outputs.TAGS }}
+          STATE_PATH: ${{ steps.state.outputs.STATE_PATH }}
+        run: |
+          cat > post.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          console.log("✅ post.mjs running");
+          EOF
+
+          node post.mjs
+
 
 
 
