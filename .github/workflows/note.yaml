@@ -431,6 +431,10 @@ jobs:
           echo "TITLE=$(jq -r .title final.json)" >> $GITHUB_OUTPUT
           echo "TAGS=$(jq -r '.tags | join(", ")' final.json)" >> $GITHUB_OUTPUT
 
+      # ✅ NOTE_STORAGE_STATE_JSON（Secrets）をファイルに展開
+      - name: Create state file from secret
+        run: echo "$STATE_JSON" > ${{ steps.state.outputs.STATE_PATH }}
+
       - name: Publish via Playwright (draft or public)
         id: publish
         env:
