@@ -511,7 +511,6 @@ jobs:
               bodyText = parsed.body || parsed.content || parsed.text || bodyText;
             }
 
-            const htmlAll = marked.parse(bodyText);
             const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
             await bodyBox.click();
             await page.keyboard.insertText(htmlAll);
