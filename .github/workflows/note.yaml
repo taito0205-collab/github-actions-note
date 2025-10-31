@@ -399,13 +399,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-   
-      - name: Download final artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: final-artifact
-          path: .note-artifacts
-    
+
       - name: Install Playwright
         run: |
           npm init -y
@@ -437,11 +431,10 @@ jobs:
           echo "TITLE=$(jq -r .title final.json)" >> $GITHUB_OUTPUT
           echo "TAGS=$(jq -r '.tags | join(", ")' final.json)" >> $GITHUB_OUTPUT
 
-      # ✅ NOTE_STORAGE_STATE_JSON（Secrets）をファイルに展開
       - name: Create state file from secret
         run: echo "$STATE_JSON" > ${{ steps.state.outputs.STATE_PATH }}
 
-      - name: Publish via Playwright (draft or public)
+      - name: Publish via Playwright (innerHTML-safe)
         id: publish
         env:
           TITLE: ${{ steps.draft.outputs.TITLE }}
@@ -450,18 +443,16 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          echo "✅ post.mjs writing (xvfb GUI-safe version)..."
+          echo "✅ post.mjs writing (innerHTML safe version)..."
 
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
           import fs from 'fs';
-          import path from 'path';
 
           (async () => {
             const { STATE_PATH, TITLE, START_URL } = process.env;
             console.log('Navigating to:', START_URL);
 
-            // --- Launch Chromium with GUI (xvfb-safe) ---
             const browser = await chromium.launch({
               headless: false,
               args: [
@@ -483,7 +474,6 @@ jobs:
             await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
             console.log('✅ Page loaded:', page.url());
 
-            // --- Wait for editor UI ---
             await page.waitForFunction(() => {
               const iframes = document.querySelectorAll('iframe');
               const titleCandidates = document.querySelectorAll(
@@ -492,10 +482,9 @@ jobs:
               return iframes.length > 0 || titleCandidates.length > 0;
             }, { timeout: 600000 });
 
-            // --- Frame detection ---
             let frame = page.mainFrame();
             for (let i = 0; i < 10; i++) {
-              console.log(`retry ${i + 1}/10 - waiting for editor DOM...`);
+              console.log(\`retry \${i + 1}/10 - waiting for editor DOM...\`);
               for (const f of page.frames()) {
                 const count = await f.locator('textarea[placeholder*="記事タイトル"]').count();
                 if (count > 0) { frame = f; break; }
@@ -504,7 +493,6 @@ jobs:
               await page.waitForTimeout(10000);
             }
 
-            // --- Title ---
             const titleBox = frame.locator(
               'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
             ).first();
@@ -514,32 +502,44 @@ jobs:
             await titleBox.fill(TITLE);
             console.log('✅ Title filled successfully');
 
-            // --- Body ---
             let bodyText = '（本文データが存在しません）';
-            const possiblePaths = ['.note-artifacts/final.json', 'final.json'];
-
-            for (const p of possiblePaths) {
-              if (fs.existsSync(p)) {
-                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
-                bodyText = parsed.body || parsed.draftBody || parsed.content || parsed.text || bodyText;
-                console.log(`✅ Loaded body from ${p}`);
-
-                break;
-              }
+            if (fs.existsSync('final.json')) {
+              const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
+              bodyText = parsed.body || parsed.content || parsed.text || bodyText;
             }
 
+            // Clean tags
+            bodyText = bodyText
+              .replace(/<\/?(h[1-6]|p|div|span|strong|em|ul|ol|li|br|a|blockquote|pre|code|hr)[^>]*>/gi, '\n')
+              .replace(/<[^>]+>/g, '')
+              .replace(/\n{3,}/g, '\n\n')
+              .trim();
+
             const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
+
             try {
               await bodyBox.waitFor({ state: 'visible', timeout: 60000 });
-              await bodyBox.click();
-              await page.keyboard.insertText(bodyText); // ✅ 修正済み：htmlAllを削除
-              await page.waitForTimeout(500);
-              console.log('✅ Body inserted successfully');
+              await bodyBox.click({ delay: 200 });
+
+              await page.evaluate((text) => {
+                const editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
+                if (editor) {
+                  editor.innerHTML = '';
+                  const safeText = text
+                    .split('\n')
+                    .map(line => `<p>${line.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")}</p>`)
+                    .join('');
+                  editor.innerHTML = safeText;
+                  editor.dispatchEvent(new InputEvent('input', { bubbles: true }));
+                }
+              }, bodyText);
+
+              await page.waitForTimeout(1500);
+              console.log('✅ Body inserted successfully (innerHTML safe)');
             } catch (err) {
               console.error('❌ 本文挿入に失敗しました:', err);
             }
 
-            // --- Screenshot ---
             await page.waitForTimeout(2000);
             await page.screenshot({ path: 'final_screenshot.png', fullPage: true });
             console.log('🖼 Screenshot saved.');
@@ -549,8 +549,6 @@ jobs:
           EOF
 
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node post.mjs
-
-
 
       - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
