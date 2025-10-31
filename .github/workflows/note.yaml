@@ -522,7 +522,8 @@ jobs:
               if (fs.existsSync(p)) {
                 const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
                 bodyText = parsed.body || parsed.draftBody || parsed.content || parsed.text || bodyText;
-                console.log(\`✅ Loaded body from \${p}\`);
+                console.log(`✅ Loaded body from ${p}`);
+
                 break;
               }
             }
