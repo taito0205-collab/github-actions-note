@@ -399,7 +399,13 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-
+   
+      - name: Download final artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: final-artifact
+          path: .note-artifacts
+    
       - name: Install Playwright
         run: |
           npm init -y
