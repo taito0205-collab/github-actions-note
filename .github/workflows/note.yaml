@@ -510,9 +510,15 @@ jobs:
 
             // --- Body ---
             let bodyText = '（本文データが存在しません）';
-            if (fs.existsSync('final.json')) {
-              const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
-              bodyText = parsed.body || parsed.content || parsed.text || bodyText;
+            const possiblePaths = ['.note-artifacts/final.json', 'final.json'];
+
+            for (const p of possiblePaths) {
+              if (fs.existsSync(p)) {
+                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+                bodyText = parsed.body || parsed.draftBody || parsed.content || parsed.text || bodyText;
+                console.log(\`✅ Loaded body from \${p}\`);
+                break;
+              }
             }
 
             const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
