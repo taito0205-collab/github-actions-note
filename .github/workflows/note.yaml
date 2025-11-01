@@ -484,7 +484,8 @@ jobs:
 
             let frame = page.mainFrame();
             for (let i = 0; i < 10; i++) {
-              console.log(\`retry \${i + 1}/10 - waiting for editor DOM...\`);
+              console.log(`retry ${i + 1}/10 - waiting for editor DOM...`);
+
               for (const f of page.frames()) {
                 const count = await f.locator('textarea[placeholder*="記事タイトル"]').count();
                 if (count > 0) { frame = f; break; }
