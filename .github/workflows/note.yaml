@@ -434,7 +434,7 @@ jobs:
       - name: Create state file from secret
         run: echo "$STATE_JSON" > ${{ steps.state.outputs.STATE_PATH }}
 
-      - name: Publish via Playwright (innerHTML-safe)
+      - name: Publish via Playwright (innerHTML clean version)
         id: publish
         env:
           TITLE: ${{ steps.draft.outputs.TITLE }}
@@ -443,17 +443,16 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          echo "✅ post.mjs writing (innerHTML safe version)..."
+          echo "✅ post.mjs writing (innerHTML clean version)..."
 
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
           import fs from 'fs';
-          import path from 'path';
-          
+
           (async () => {
             const { STATE_PATH, TITLE, START_URL } = process.env;
             console.log('Navigating to:', START_URL);
-          
+
             const browser = await chromium.launch({
               headless: false,
               args: [
@@ -464,17 +463,17 @@ jobs:
                 '--window-size=1920,1080'
               ],
             });
-          
+
             const context = await browser.newContext({
               storageState: STATE_PATH,
               locale: 'ja-JP',
               viewport: { width: 1280, height: 800 },
             });
-          
+
             const page = await context.newPage();
             await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
             console.log('✅ Page loaded:', page.url());
-          
+
             // --- Wait for editor UI ---
             await page.waitForFunction(() => {
               const iframes = document.querySelectorAll('iframe');
@@ -483,8 +482,8 @@ jobs:
               );
               return iframes.length > 0 || titleCandidates.length > 0;
             }, { timeout: 600000 });
-          
-            // --- Frame detection ---
+
+            // --- Detect frame ---
             let frame = page.mainFrame();
             for (let i = 0; i < 10; i++) {
               console.log(`retry ${i + 1}/10 - waiting for editor DOM...`);
@@ -495,37 +494,49 @@ jobs:
               if (await frame.locator('textarea[placeholder*="記事タイトル"]').count()) break;
               await page.waitForTimeout(10000);
             }
-          
+
             // --- Title ---
             const titleBox = frame.locator(
               'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
             ).first();
-          
             await titleBox.waitFor({ state: 'visible', timeout: 120000 });
             await titleBox.click({ delay: 200 });
             await titleBox.fill(TITLE);
             console.log('✅ Title filled successfully');
-          
+
             // --- Body ---
             let bodyText = '（本文データが存在しません）';
-            if (fs.existsSync('final.json')) {
-              const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
-              bodyText = parsed.body || parsed.content || parsed.text || bodyText;
+            const possiblePaths = ['final.json', '.note-artifacts/final.json'];
+            for (const p of possiblePaths) {
+              if (fs.existsSync(p)) {
+                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
+                bodyText = parsed.body || parsed.content || parsed.text || bodyText;
+                console.log(`✅ Loaded body from ${p}`);
+                break;
+              }
             }
-          
-            // 🔧 HTMLタグを除去して note 用に変換
-            bodyText = bodyText
-              .replace(/<[^>]+>/g, '') // タグ削除
+
+            // 🧹 Clean HTML tags but keep paragraphs as plain line breaks
+            const cleanBody = bodyText
+              .replace(/<\/?[^>]+(>|$)/g, '') // remove HTML tags
               .replace(/&nbsp;/g, ' ')
               .replace(/\n{3,}/g, '\n\n')
               .trim();
-          
+
             const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
             await bodyBox.waitFor({ state: 'visible', timeout: 60000 });
-            await bodyBox.click();
-            await page.keyboard.type(bodyText, { delay: 5 });
-            console.log('✅ Body inserted successfully (plain text)');
-            
+
+            // ✅ innerHTML方式でnoteに直接反映（成功パターン）
+            await page.evaluate((text) => {
+              const el = document.querySelector('div[contenteditable="true"][role="textbox"]');
+              if (el) {
+                // 改行を <br> に変換（<p>は使わない）
+                el.innerHTML = text.replace(/\n/g, '<br>');
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+              }
+            }, cleanBody);
+
+            console.log('✅ Body inserted successfully (innerHTML clean)');
             await page.waitForTimeout(2000);
             await page.screenshot({ path: 'final_screenshot.png', fullPage: true });
             console.log('🖼 Screenshot saved.');
@@ -535,6 +546,7 @@ jobs:
           EOF
 
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node post.mjs
+
 
       - name: Upload screenshot (if any)
         if: ${{ steps.publish.outputs.screenshot != '' }}
