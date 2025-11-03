@@ -444,7 +444,7 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          echo "✅ post.mjs writing (xvfb GUI-safe version)..."
+          echo "✅ post.mjs writing (HTML insertText version)..."
 
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
@@ -455,7 +455,6 @@ jobs:
             const { STATE_PATH, TITLE, START_URL } = process.env;
             console.log('Navigating to:', START_URL);
 
-            // --- Launch Chromium with GUI (xvfb-safe) ---
             const browser = await chromium.launch({
               headless: false,
               args: [
@@ -466,84 +465,53 @@ jobs:
                 '--window-size=1920,1080'
               ],
             });
-
             const context = await browser.newContext({
               storageState: STATE_PATH,
               locale: 'ja-JP',
               viewport: { width: 1280, height: 800 },
             });
-
             const page = await context.newPage();
+
             await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
             console.log('✅ Page loaded:', page.url());
 
-            // --- Wait for editor UI ---
+            // --- Wait for editor ---
             await page.waitForFunction(() => {
-              const iframes = document.querySelectorAll('iframe');
-              const titleCandidates = document.querySelectorAll(
-                'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
-              );
-              return iframes.length > 0 || titleCandidates.length > 0;
-            }, { timeout: 600000 });
-
-            // --- Detect frame ---
-            let frame = page.mainFrame();
-            for (let i = 0; i < 10; i++) {
-              console.log(`retry ${i + 1}/10 - waiting for editor DOM...`);
-              for (const f of page.frames()) {
-                const count = await f.locator('textarea[placeholder*="記事タイトル"]').count();
-                if (count > 0) { frame = f; break; }
-              }
-              if (await frame.locator('textarea[placeholder*="記事タイトル"]').count()) break;
-              await page.waitForTimeout(10000);
-            }
+              const title = document.querySelector('textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
+              const editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
+              return title && editor;
+            }, { timeout: 60000 });
 
             // --- Title ---
-            const titleBox = frame.locator(
-              'textarea[placeholder*="記事タイトル"], input[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
-            ).first();
-            await titleBox.waitFor({ state: 'visible', timeout: 120000 });
-            await titleBox.click({ delay: 200 });
+            const titleBox = await page.locator('textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]').first();
+            await titleBox.click();
             await titleBox.fill(TITLE);
             console.log('✅ Title filled successfully');
 
-            // --- Load body from final.json ---
+            // --- Body ---
             let bodyText = '（本文データが存在しません）';
-            const paths = ['final.json', '.note-artifacts/final.json'];
-            for (const p of paths) {
-              if (fs.existsSync(p)) {
-                const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
-                bodyText = parsed.body || parsed.content || parsed.text || bodyText;
-                console.log(`✅ Loaded body from ${p}`);
-                break;
-              }
+            if (fs.existsSync('final.json')) {
+              const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
+              bodyText = parsed.body || parsed.content || parsed.text || bodyText;
+              console.log('✅ Loaded body from final.json');
             }
 
-            // --- Convert Markdown → HTML → Plain Text ---
+            // ✅ Markdown → HTML変換（成功パターン維持）
             let htmlAll = marked.parse(bodyText || '');
+            // <p>を削除しつつ改行で整形
             htmlAll = htmlAll
-              .replace(/<\/p>/g, '\n\n')      // 段落タグ → 改行
-              .replace(/<\/h[1-6]>/g, '\n\n') // 見出しタグ → 改行
-              .replace(/<[^>]+>/g, '')        // HTMLタグ削除
-              .replace(/&nbsp;/g, ' ')
-              .replace(/&amp;/g, '&')
-              .replace(/&lt;/g, '<')
-              .replace(/&gt;/g, '>')
+              .replace(/<\/p>/g, '\n')
+              .replace(/<\/h[1-6]>/g, '\n')
+              .replace(/<p[^>]*>/g, '')
+              .replace(/<h[1-6][^>]*>/g, '')
+              .replace(/<[^>]+>/g, '')
               .trim();
 
-            // --- Insert body text into editor (innerHTML safe) ---
-            const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
-            await bodyBox.waitFor({ state: 'visible', timeout: 60000 });
+            const bodyBox = await page.locator('div[contenteditable="true"][role="textbox"]').first();
+            await bodyBox.click();
+            await page.keyboard.insertText(htmlAll); // 👈 HTML由来テキストを直接入力
+            console.log('✅ Body inserted successfully (HTML converted text)');
 
-            await page.evaluate((text) => {
-              const el = document.querySelector('div[contenteditable="true"][role="textbox"]');
-              if (el) {
-                el.innerHTML = text.replace(/\n/g, '<br>');
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-              }
-            }, htmlAll);
-
-            console.log('✅ Body inserted successfully (tags stripped)');
             await page.waitForTimeout(2000);
             await page.screenshot({ path: 'final_screenshot.png', fullPage: true });
             console.log('🖼 Screenshot saved.');
@@ -553,6 +521,7 @@ jobs:
           EOF
 
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node post.mjs
+
 
 
       - name: Upload screenshot (if any)
