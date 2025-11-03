@@ -432,7 +432,8 @@ jobs:
           echo "TAGS=$(jq -r '.tags | join(", ")' final.json)" >> $GITHUB_OUTPUT
 
       - name: Create state file from secret
-        run: echo "$STATE_JSON" > ${{ steps.state.outputs.STATE_PATH }}
+        run: |
+          echo "$STATE_JSON" | base64 --decode > ${{ steps.state.outputs.STATE_PATH }}
 
       - name: Publish via Playwright (innerHTML clean version)
         id: publish
