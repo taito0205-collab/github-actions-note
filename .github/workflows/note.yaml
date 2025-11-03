@@ -435,7 +435,7 @@ jobs:
         run: |
           echo "$STATE_JSON" | base64 --decode > ${{ steps.state.outputs.STATE_PATH }}
 
-      - name: Publish via Playwright (xvfb GUI-safe version)
+      - name: Publish via Playwright (HTML keyboard version)
         id: publish
         env:
           TITLE: ${{ steps.draft.outputs.TITLE }}
@@ -444,7 +444,7 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          echo "✅ post.mjs writing (HTML insertText version)..."
+          echo "✅ post.mjs writing (HTML keyboard version)..."
 
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
@@ -455,6 +455,7 @@ jobs:
             const { STATE_PATH, TITLE, START_URL } = process.env;
             console.log('Navigating to:', START_URL);
 
+            // Launch browser
             const browser = await chromium.launch({
               headless: false,
               args: [
@@ -465,54 +466,63 @@ jobs:
                 '--window-size=1920,1080'
               ],
             });
+
             const context = await browser.newContext({
               storageState: STATE_PATH,
               locale: 'ja-JP',
               viewport: { width: 1280, height: 800 },
             });
-            const page = await context.newPage();
 
+            const page = await context.newPage();
             await page.goto(START_URL, { waitUntil: 'networkidle', timeout: 180000 });
             console.log('✅ Page loaded:', page.url());
 
-            // --- Wait for editor ---
+            // Wait for editor
             await page.waitForFunction(() => {
-              const title = document.querySelector('textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
-              const editor = document.querySelector('div[contenteditable="true"][role="textbox"]');
-              return title && editor;
-            }, { timeout: 60000 });
+              const el = document.querySelector('textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]');
+              return !!el;
+            }, { timeout: 600000 });
 
-            // --- Title ---
-            const titleBox = await page.locator('textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]').first();
-            await titleBox.click();
+            // Title
+            const titleBox = page.locator(
+              'textarea[placeholder*="記事タイトル"], div[contenteditable="true"][data-placeholder*="記事タイトル"]'
+            ).first();
             await titleBox.fill(TITLE);
             console.log('✅ Title filled successfully');
 
-            // --- Body ---
+            // Load body
             let bodyText = '（本文データが存在しません）';
             if (fs.existsSync('final.json')) {
               const parsed = JSON.parse(fs.readFileSync('final.json', 'utf8'));
               bodyText = parsed.body || parsed.content || parsed.text || bodyText;
-              console.log('✅ Loaded body from final.json');
             }
 
-            // ✅ Markdown → HTML変換（成功パターン維持）
-            let htmlAll = marked.parse(bodyText || '');
-            // <p>を削除しつつ改行で整形
-            htmlAll = htmlAll
-              .replace(/<\/p>/g, '\n')
-              .replace(/<\/h[1-6]>/g, '\n')
-              .replace(/<p[^>]*>/g, '')
-              .replace(/<h[1-6][^>]*>/g, '')
+            // Markdown → HTML → プレーンテキスト
+            const htmlAll = marked.parse(bodyText || '');
+            const plain = htmlAll
+              .replace(/<\/p>/g, '\n\n')
+              .replace(/<\/h[1-6]>/g, '\n\n')
               .replace(/<[^>]+>/g, '')
+              .replace(/&nbsp;/g, ' ')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
               .trim();
 
-            const bodyBox = await page.locator('div[contenteditable="true"][role="textbox"]').first();
-            await bodyBox.click();
-            await page.keyboard.insertText(htmlAll); // 👈 HTML由来テキストを直接入力
-            console.log('✅ Body inserted successfully (HTML converted text)');
+            // Body insert via keyboard input (確実にReactに認識される)
+            const bodyBox = page.locator('div[contenteditable="true"][role="textbox"]').first();
+            await bodyBox.click({ delay: 200 });
+            await page.keyboard.type(plain, { delay: 1 });
+            console.log('✅ Body inserted successfully (keyboard input)');
 
-            await page.waitForTimeout(2000);
+            // Save draft
+            const saveBtn = page.locator('button:has-text("下書き保存"), [aria-label*="下書き保存"]').first();
+            if (await saveBtn.isVisible()) {
+              await saveBtn.click();
+              console.log('💾 下書きを保存しました');
+            }
+
+            await page.waitForTimeout(3000);
             await page.screenshot({ path: 'final_screenshot.png', fullPage: true });
             console.log('🖼 Screenshot saved.');
             await browser.close();
@@ -521,6 +531,7 @@ jobs:
           EOF
 
           xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" node post.mjs
+
 
 
 
