@@ -435,7 +435,7 @@ jobs:
         run: |
           echo "$STATE_JSON" | base64 --decode > ${{ steps.state.outputs.STATE_PATH }}
 
-      - name: Publish via Playwright (innerHTML clean version)
+      - name: Publish via Playwright (xvfb GUI-safe version)
         id: publish
         env:
           TITLE: ${{ steps.draft.outputs.TITLE }}
@@ -444,16 +444,18 @@ jobs:
           START_URL: ${{ env.START_URL }}
           IS_PUBLIC: ${{ env.IS_PUBLIC }}
         run: |
-          echo "✅ post.mjs writing (innerHTML clean version)..."
+          echo "✅ post.mjs writing (xvfb GUI-safe version)..."
 
           cat > post.mjs <<'EOF'
           import { chromium } from 'playwright';
           import fs from 'fs';
+          import { marked } from 'marked';
 
           (async () => {
             const { STATE_PATH, TITLE, START_URL } = process.env;
             console.log('Navigating to:', START_URL);
 
+            // --- Launch Chromium with GUI (xvfb-safe) ---
             const browser = await chromium.launch({
               headless: false,
               args: [
@@ -505,10 +507,10 @@ jobs:
             await titleBox.fill(TITLE);
             console.log('✅ Title filled successfully');
 
-            // --- Body ---
+            // --- Load body from final.json ---
             let bodyText = '（本文データが存在しません）';
-            const possiblePaths = ['final.json', '.note-artifacts/final.json'];
-            for (const p of possiblePaths) {
+            const paths = ['final.json', '.note-artifacts/final.json'];
+            for (const p of paths) {
               if (fs.existsSync(p)) {
                 const parsed = JSON.parse(fs.readFileSync(p, 'utf8'));
                 bodyText = parsed.body || parsed.content || parsed.text || bodyText;
@@ -517,27 +519,31 @@ jobs:
               }
             }
 
-            // 🧹 Clean HTML tags but keep paragraphs as plain line breaks
-            const cleanBody = bodyText
-              .replace(/<\/?[^>]+(>|$)/g, '') // remove HTML tags
+            // --- Convert Markdown → HTML → Plain Text ---
+            let htmlAll = marked.parse(bodyText || '');
+            htmlAll = htmlAll
+              .replace(/<\/p>/g, '\n\n')      // 段落タグ → 改行
+              .replace(/<\/h[1-6]>/g, '\n\n') // 見出しタグ → 改行
+              .replace(/<[^>]+>/g, '')        // HTMLタグ削除
               .replace(/&nbsp;/g, ' ')
-              .replace(/\n{3,}/g, '\n\n')
+              .replace(/&amp;/g, '&')
+              .replace(/&lt;/g, '<')
+              .replace(/&gt;/g, '>')
               .trim();
 
+            // --- Insert body text into editor (innerHTML safe) ---
             const bodyBox = frame.locator('div[contenteditable="true"][role="textbox"]').first();
             await bodyBox.waitFor({ state: 'visible', timeout: 60000 });
 
-            // ✅ innerHTML方式でnoteに直接反映（成功パターン）
             await page.evaluate((text) => {
               const el = document.querySelector('div[contenteditable="true"][role="textbox"]');
               if (el) {
-                // 改行を <br> に変換（<p>は使わない）
                 el.innerHTML = text.replace(/\n/g, '<br>');
                 el.dispatchEvent(new Event('input', { bubbles: true }));
               }
-            }, cleanBody);
+            }, htmlAll);
 
-            console.log('✅ Body inserted successfully (innerHTML clean)');
+            console.log('✅ Body inserted successfully (tags stripped)');
             await page.waitForTimeout(2000);
             await page.screenshot({ path: 'final_screenshot.png', fullPage: true });
             console.log('🖼 Screenshot saved.');
